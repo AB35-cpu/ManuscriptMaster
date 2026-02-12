@@ -1,3 +1,59 @@
+from supabase import create_client, Client
+
+# --- DB CONNECTION ---
+# These must be in your Streamlit Secrets!
+URL = st.secrets["SUPABASE_URL"]
+KEY = st.secrets["SUPABASE_KEY"]
+supabase: Client = create_client(URL, KEY)
+
+# --- USER AUTHENTICATION UI ---
+st.sidebar.title("🔐 Account")
+menu = ["Login", "Sign Up"]
+choice = st.sidebar.selectbox("Action", menu)
+
+user = None
+
+if choice == "Sign Up":
+    email = st.sidebar.text_input("Email")
+    password = st.sidebar.text_input("Password", type="password")
+    if st.sidebar.button("Create Account"):
+        res = supabase.auth.sign_up({"email": email, "password": password})
+        st.sidebar.success("Check your email for a confirmation link!")
+
+elif choice == "Login":
+    email = st.sidebar.text_input("Email")
+    password = st.sidebar.text_input("Password", type="password")
+    if st.sidebar.button("Login"):
+        try:
+            res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+            st.session_state.user = res.user
+            st.sidebar.success(f"Logged in as {res.user.email}")
+        except Exception as e:
+            st.sidebar.error("Invalid login credentials")
+
+# Check if user is logged in
+if "user" in st.session_state and st.session_state.user:
+    user = st.session_state.user
+    
+    # FETCH PROFILE DATA (Word usage, Plan Type)
+    profile = supabase.table("profiles").select("*").eq("id", user.id).single().execute()
+    user_data = profile.data
+
+    # --- SIDEBAR USAGE DASHBOARD ---
+    st.sidebar.divider()
+    st.sidebar.subheader(f"Plan: {user_data['plan_type']}")
+    
+    # Usage Progress Bar
+    usage_percent = user_data['words_used'] / user_data['word_limit']
+    st.sidebar.progress(min(usage_percent, 1.0))
+    st.sidebar.write(f"Used: {user_data['words_used']} / {user_data['word_limit']} words")
+
+    # SHOW UPGRADE BUTTON IF NEAR LIMIT
+    if usage_percent >= 0.9:
+        st.sidebar.warning("You are almost at your limit!")
+        # (Step 3 will link this to Lemon Squeezy)
+        st.sidebar.button("💎 Upgrade Now")
+
 import os
 import json
 import io
@@ -158,4 +214,5 @@ if st.button("Fix Formatting"):
                 st.success(f"Success! Estimated {est_pages} pages used from your weekly quota.")
 
 if st.session_state.fixed_docx:
+
     st.download_button("📥 Download Fixed Manuscript", st.session_state.fixed_docx, "Fixed_Manuscript.docx")
