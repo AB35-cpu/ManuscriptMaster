@@ -3,3 +3,5 @@ python-docx
 openai
 supabase
 python-dotenv
+supabase
+gotrue
