@@ -61,11 +61,35 @@ def kill_theme_fonts(element, target_font):
 # =========================
 st.set_page_config(page_title="Manuscript Master", layout="wide")
 
-# Authentication Check
-if "user" not in st.session_state:
-    st.info("Please Log In via the Sidebar to start.")
-    # (Insert your login UI from Step 2 here)
-    st.stop()
+# --- AUTHENTICATION UI IN SIDEBAR ---
+with st.sidebar:
+    st.title("🔐 Account")
+    if "user" not in st.session_state:
+        auth_mode = st.radio("Choose Mode", ["Login", "Sign Up"])
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        
+        if auth_mode == "Sign Up":
+            if st.button("Create Account"):
+                try:
+                    res = supabase.auth.sign_up({"email": email, "password": password})
+                    st.success("Check your email for a verification link!")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+        else:
+            if st.button("Login"):
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    st.session_state.user = res.user
+                    st.rerun() # Refresh to show the app
+                except Exception as e:
+                    st.error("Invalid email or password.")
+        st.stop() # Stops the rest of the app from loading until login
+    else:
+        if st.button("Log Out"):
+            supabase.auth.sign_out()
+            del st.session_state.user
+            st.rerun()
 
 user = st.session_state.user
 # Fetch live data from Supabase Profiles
@@ -102,3 +126,4 @@ if st.button("Purge Theme Fonts & Fix Formatting"):
         else:
             st.error(f"⚠️ Limit Exceeded! This file is {file_words} words, but you only have {user_data['word_limit'] - user_data['words_used']} left.")
             st.button("💎 Upgrade to Basic ($9)")
+
