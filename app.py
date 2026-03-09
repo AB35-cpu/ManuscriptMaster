@@ -25,35 +25,20 @@ except Exception as e:
 
 SYMBOL_FONTS = {"Symbol", "Webdings", "Wingdings", "Wingdings 2", "Wingdings 3", "MT Extra"}
 
-
-# --- 1. RECOVERY INTERCEPTOR ---
-# This must run BEFORE the sidebar or any other UI elements
+# Detect if the user is coming from a password reset link
 query_params = st.query_params
-
 if "type" in query_params and query_params["type"] == "recovery":
-    st.title("🔄 Reset Your Password")
-    st.info("Please enter your new password below.")
-    
-    with st.form("recovery_form"):
-        new_pw = st.text_input("New Password", type="password", help="At least 6 characters")
-        confirm_pw = st.text_input("Confirm New Password", type="password")
-        submit_recovery = st.form_submit_button("Update Password")
-
-        if submit_recovery:
-            if new_pw == confirm_pw and len(new_pw) >= 6:
-                try:
-                    # This updates the password for the user session attached to the recovery link
-                    supabase.auth.update_user({"password": new_pw})
-                    st.success("✅ Password updated successfully!")
-                    st.balloons()
-                    st.info("You can now go back to the login page.")
-                    # Clear parameters to return to normal app state
-                    st.query_params.clear() 
-                except Exception as e:
-                    st.error(f"Update failed: {e}")
-            else:
-                st.error("Passwords must match and be at least 6 characters.")
-    st.stop() # Prevents the rest of the app from loading during recovery
+    st.title("🔄 Set New Password")
+    new_password = st.text_input("Enter new password", type="password")
+    if st.button("Update Password"):
+        try:
+            supabase.auth.update_user({"password": new_password})
+            st.success("Password updated! You can now log in.")
+            # Clear query params to return to normal app state
+            st.query_params.clear() 
+        except Exception as e:
+            st.error(f"Update failed: {e}")
+    st.stop() # Stop the rest of the app until password is fixed
 
 # =========================
 # 2. WORD COUNT & XML HELPERS
@@ -167,5 +152,6 @@ if st.button("Fix Formatting"):
                 st.success(f"Success! {file_words} words processed.")
         else:
             st.error("⚠️ Word limit exceeded. Please upgrade.")
+
 
 
