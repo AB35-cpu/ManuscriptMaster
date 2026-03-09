@@ -9,6 +9,22 @@ import docx.oxml.shared
 from openai import OpenAI
 from supabase import create_client, Client
 
+
+# =========================
+# 3. PASSWORD RECOVERY FLOW
+# =========================
+query_params = st.query_params
+if "type" in query_params and query_params["type"] == "recovery":
+    st.title("🔄 Set New Password")
+    new_pw = st.text_input("Enter new password", type="password")
+    if st.button("Update Password"):
+        try:
+            supabase.auth.update_user({"password": new_pw})
+            st.success("Password updated! Please log in from the sidebar.")
+            st.query_params.clear()
+        except Exception as e: st.error(f"Update failed: {e}")
+    st.stop()
+
 # =========================
 # 1. SECURE CONFIGURATION
 # =========================
@@ -22,6 +38,8 @@ except Exception as e:
     st.stop()
 
 SYMBOL_FONTS = {"Symbol", "Webdings", "Wingdings", "Wingdings 2", "Wingdings 3", "MT Extra"}
+
+
 
 # =========================
 # 2. WORD COUNT & XML HELPERS
@@ -48,20 +66,6 @@ def kill_theme_fonts(element, target_font):
             if attr in rFonts.attrib: del rFonts.attrib[attr]
     except: pass
 
-# =========================
-# 3. PASSWORD RECOVERY FLOW
-# =========================
-query_params = st.query_params
-if "type" in query_params and query_params["type"] == "recovery":
-    st.title("🔄 Set New Password")
-    new_pw = st.text_input("Enter new password", type="password")
-    if st.button("Update Password"):
-        try:
-            supabase.auth.update_user({"password": new_pw})
-            st.success("Password updated! Please log in from the sidebar.")
-            st.query_params.clear()
-        except Exception as e: st.error(f"Update failed: {e}")
-    st.stop()
 
 # =========================
 # 4. AUTHENTICATION UI
@@ -149,3 +153,4 @@ if st.button("Fix Formatting"):
                 st.success(f"Success! {file_words} words processed.")
         else:
             st.error("⚠️ Word limit exceeded. Please upgrade.")
+
