@@ -8,49 +8,56 @@ import docx.oxml.shared
 from openai import OpenAI
 from supabase import create_client, Client
 
-# =========================
-# 1. SECURE CONFIGURATION
-# =========================
+# ==========================================
+# 1. SECURE CONFIGURATION & CONNECTION
+# ==========================================
 try:
-    # Essential for connecting your app to the database and AI
     URL = st.secrets["SUPABASE_URL"]
     KEY = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(URL, KEY)
     client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 except Exception as e:
-    st.error(f"Configuration Error: {e}. Check Streamlit Secrets.")
+    st.error(f"Configuration Error: {e}")
     st.stop()
 
-# =========================
-# 2. RECOVERY INTERCEPTOR
-# =========================
-# This must run at the very top to catch password reset links
-query_params = st.query_params
-if "type" in query_params and query_params["type"] == "recovery":
-    st.title("🔄 Reset Your Password")
+# ==========================================
+# 2. THE RECOVERY GATEKEEPER (MUST BE TOP)
+# ==========================================
+# This catches the user IMMEDIATELY when they click the email link
+params = st.query_params
+
+if params.get("type") == "recovery" or params.get("type") == ["recovery"]:
+    st.title("🔄 Create New Password")
+    st.info("Your identity is verified. Please set a new password.")
+    
     with st.form("recovery_form"):
         new_pw = st.text_input("New Password", type="password")
-        confirm_pw = st.text_input("Confirm Password", type="password")
-        if st.form_submit_button("Update Password"):
+        confirm_pw = st.text_input("Confirm New Password", type="password")
+        submit = st.form_submit_button("Update Password")
+        
+        if submit:
             if new_pw == confirm_pw and len(new_pw) >= 6:
                 try:
                     supabase.auth.update_user({"password": new_pw})
-                    st.success("✅ Password updated! You can now log in.")
+                    st.success("✅ Password updated! Please refresh and log in.")
                     st.query_params.clear()
-                except Exception as e: st.error(f"Update failed: {e}")
-            else: st.error("Passwords must match and be 6+ characters.")
-    st.stop()
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"Update failed: {e}")
+            else:
+                st.error("Passwords must match and be at least 6 characters.")
+    st.stop() # CRITICAL: Stops the rest of the app from loading
 
-# =========================
-# 3. HELPERS: XML & WORD COUNT
-# =========================
+# ==========================================
+# 3. HELPERS: XML THEME PURGE & WORD COUNT
+# ==========================================
 
 def get_word_count(doc):
-    """Calculates usage against the 3,000-word Free Plan limit."""
+    """Checks usage against your 3,000-word Free Plan limit."""
     return len(" ".join([p.text for p in doc.paragraphs]).split())
 
 def kill_theme_fonts(element, target_font):
-    """Fixes 'CT_P' and 'CT_Style' errors by purging Calibri themes."""
+    """Universal fix for 'CT_P' and Style errors."""
     try:
         if hasattr(element, 'get_or_add_pPr'):
             rPr = element.get_or_add_pPr().get_or_add_rPr()
@@ -64,39 +71,39 @@ def kill_theme_fonts(element, target_font):
             if attr in rFonts.attrib: del rFonts.attrib[attr]
     except: pass
 
-# =========================
-# 4. SIDEBAR: AUTH & USAGE
-# =========================
+# ==========================================
+# 4. SIDEBAR: AUTHENTICATION & USAGE
+# ==========================================
 st.set_page_config(page_title="Manuscript Master", layout="wide")
 
 with st.sidebar:
     st.title("🔐 Account")
     if "user" not in st.session_state:
-        auth_mode = st.radio("Mode", ["Login", "Sign Up", "Forgot Password"])
+        auth_mode = st.radio("Action", ["Login", "Sign Up", "Forgot Password"])
         u_email = st.text_input("Email")
         
         if auth_mode == "Forgot Password":
             if st.button("Send Reset Link"):
                 supabase.auth.reset_password_for_email(u_email)
-                st.success("Reset link sent!")
+                st.success("Reset link sent! Check your inbox.")
         else:
             u_pw = st.text_input("Password", type="password")
             if auth_mode == "Sign Up" and st.button("Create Account"):
-                if len(u_pw) < 6: st.error("Min 6 characters.")
+                if len(u_pw) < 6: st.error("Min 6 characters required.")
                 else:
                     try:
                         supabase.auth.sign_up({"email": u_email, "password": u_pw})
-                        st.success("Account created! Verify email if enabled.")
-                    except Exception as e: st.error(f"Error: {e}")
+                        st.success("Account created! Check email if confirmation is ON.")
+                    except Exception as e: st.error(f"Sign-up error: {e}")
             elif auth_mode == "Login" and st.button("Login"):
                 try:
                     res = supabase.auth.sign_in_with_password({"email": u_email, "password": u_pw})
                     st.session_state.user = res.user
                     st.rerun()
-                except: st.error("Invalid login.")
+                except: st.error("Invalid email or password.")
         st.stop()
     else:
-        # Fetching profile for Smart Usage Logic
+        # Fetch Live Profile for Word Tracking
         try:
             profile = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).single().execute()
             user_data = profile.data
@@ -107,14 +114,15 @@ with st.sidebar:
         usage_pct = user_data['words_used'] / user_data['word_limit']
         st.progress(min(usage_pct, 1.0))
         st.caption(f"{user_data['words_used']} / {user_data['word_limit']} words")
+        
         if st.button("Log Out"):
             supabase.auth.sign_out()
             del st.session_state.user
             st.rerun()
 
-# =========================
-# 5. MAIN APP
-# =========================
+# ==========================================
+# 5. MAIN INTERFACE
+# ==========================================
 st.title("📄 Manuscript Compliance Agent")
 col1, col2 = st.columns(2)
 
@@ -130,23 +138,23 @@ if st.button("Fix Formatting"):
         doc = Document(uploaded_file)
         file_words = get_word_count(doc)
         
-        # GATEKEEPER: Check word limit
+        # SMART USAGE GATEKEEPER
         if (user_data['words_used'] + file_words) <= user_data['word_limit']:
-            with st.spinner("Processing..."):
-                # Demo Rule (Replacement for AI logic)
-                font = "Times New Roman"
+            with st.spinner("Processing AI Formatting..."):
+                font_choice = "Times New Roman"
                 for style in doc.styles:
                     if hasattr(style, 'font') and style.name not in exclude:
-                        style.font.name = font
-                        kill_theme_fonts(style.font._element, font)
+                        style.font.name = font_choice
+                        kill_theme_fonts(style.font._element, font_choice)
                 
-                # Update database usage
+                # Update Supabase usage
                 new_total = user_data['words_used'] + file_words
                 supabase.table("profiles").update({"words_used": new_total}).eq("id", st.session_state.user.id).execute()
                 
                 output = io.BytesIO()
                 doc.save(output)
-                st.download_button("📥 Download Manuscript", output.getvalue(), "Formatted.docx")
-                st.success(f"Processed {file_words} words!")
+                st.download_button("📥 Download Manuscript", output.getvalue(), "Formatted_Manuscript.docx")
+                st.success(f"Success! {file_words} words added to your usage.")
         else:
-            st.error(f"Limit Exceeded! This file is {file_words} words, but you only have {user_data['word_limit'] - user_data['words_used']} left.")
+            st.error(f"Limit Exceeded! You have {user_data['word_limit'] - user_data['words_used']} words left.")
+            st.info("Upgrade to Basic ($9) for more words.")
